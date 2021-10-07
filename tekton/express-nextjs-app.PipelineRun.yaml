@@ -1,0 +1,32 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: chatroom-backend-
+spec:
+  serviceAccountName: build-bot
+  pipelineRef:
+    name: nodejs
+  params:
+    - name: app-name
+      value: chatroom-backend
+    - name: source-repo
+      value: https://github.com/cloud-native-garage-method-cohort/Team4-Chat-Room-Backend.git
+    - name: image-repo
+      value: quay.io/fabrizio_pietrucci/team4-chatroom-backend
+  workspaces:
+    - name: pipeline-shared-data
+      volumeClaimTemplate: 
+        spec: 
+          resources:
+            requests:
+              storage: 1Gi
+          accessModes:
+            - ReadWriteOnce
+    - name: production-repository
+      volumeClaimTemplate: 
+        spec: 
+          resources:
+            requests:
+              storage: 1Gi
+          accessModes:
+            - ReadWriteOnce

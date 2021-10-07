@@ -1,0 +1,71 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: create-configuration
+spec:
+  params:
+    - name: app-name
+      description: the name of the app
+    - name: commit
+      description: The precise commit SHA used for this task
+    - name: image-repo
+      description: contains the full image repository (without :tag)
+    - name: runtime
+      description: Description of the runtime engine (js, Java, Etc)
+    - name: source-repo
+      description: Source git repository
+  results:
+    - name: manifest
+      description: The path to the yaml file
+  steps:
+    - name: create-manifest
+      image: quay.io/upslopeio/kustomize:latest
+      script: |
+        #!/bin/sh
+        set -e
+
+        trap 'catch $? $LINENO' EXIT
+
+        catch() {
+          if [ "$1" != "0" ]; then
+            echo "Error $1 occurred on $2"
+          fi
+        }
+
+        cd source/k8s
+
+        if [ -f kustomization.yaml ] || [ -f kustomization.yml ] || [ -f Kustomization ]; then
+          echo "Kustomization file found."
+        else
+          echo "Error: unable to find one of 'kustomization.yaml', 'kustomization.yml' or 'Kustomization' in folder:"
+          pwd
+          exit 1
+        fi
+
+        kustomize edit set image "*=$(params.image-repo):$(params.commit)"
+
+        kustomize edit set label "app.kubernetes.io/instance:$(params.app-name)"
+        kustomize edit set label "app.kubernetes.io/name:$(params.app-name)"
+        kustomize edit set label "app:$(params.app-name)"
+
+        kustomize edit add annotation "app.openshift.io/runtime:$(params.runtime)"
+        kustomize edit add annotation "app.openshift.io/vcs-uri:$(params.source-repo)"
+        kustomize edit add annotation "app.openshift.io/vcs-ref:$(params.commit)"
+
+        kustomize build > manifest.yaml
+
+        if [ -f manifest.yaml ]; then
+          echo "manifests.yaml successfully generated"
+          echo "contents of manifests is:"
+          cat manifest.yaml
+        else
+          echo "ERROR: manifest.yaml not generated"
+          exit 1
+        fi
+    - name: manifest-to-results
+      image: quay.io/upslopeio/kustomize:latest
+      script: |
+        echo -n "k8s/manifest.yaml" > $(results.manifest.path)
+  workspaces:
+    - name: source
+      description: contains the cloned git repo

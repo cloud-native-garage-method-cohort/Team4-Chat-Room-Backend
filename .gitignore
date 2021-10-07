@@ -1,3 +1,5 @@
 node_modules/
 .idea/
 manifests.yaml
+/node_modules
+*.Secret.yaml

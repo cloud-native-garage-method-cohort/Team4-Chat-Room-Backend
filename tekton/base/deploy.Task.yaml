@@ -1,0 +1,57 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: deploy
+spec:
+  params:
+    - name: app-namespace
+      description: namespace for the deployment
+    - name: manifest
+      description: the relative path to the manifest file.
+  results:
+    - name: service-port
+      description: the port exposed by the service
+    - name: resource-type
+      description: the resource type of the service
+  steps:
+    - name: deploy
+      image: quay.io/upslopeio/kubectl:latest
+      script: |
+        #!/bin/sh
+        set -e
+
+        kubectl apply -n $(params.app-namespace) -f ./source/$(params.manifest) --validate=false
+    - name: verify-deploy
+      image: quay.io/upslopeio/kubectl:latest
+      script: |
+        #!/bin/sh
+        set -e
+
+        trap 'catch $? $LINENO' EXIT
+
+        catch() {
+          if [ "$1" != "0" ]; then
+            echo "Error $1 occurred on $2"
+          fi
+        }
+
+        MANIFEST=$(params.manifest)
+
+        if [[ -z "${MANIFEST}" ]]; then
+           echo "Manifest path not set"
+           exit 1
+        fi
+
+        DEPLOYMENT_NAME=$(yq eval 'select(.kind == "Deployment").metadata.name' "./source/$MANIFEST" )
+
+        if [[ -z "${DEPLOYMENT_NAME}" ]]; then
+           echo "Unable to determine deployment name"
+           exit 1
+        fi
+
+        echo "Waiting for rollout of deployment/${DEPLOYMENT_NAME} in $(params.app-namespace)"
+
+        kubectl rollout status -w deployment/${DEPLOYMENT_NAME} -n $(params.app-namespace)
+  workspaces:
+    - name: source
+      description: contains the cloned git repo

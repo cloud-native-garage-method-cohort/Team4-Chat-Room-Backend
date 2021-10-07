@@ -1,0 +1,146 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: save-configuration
+spec:
+  params:
+    - name: manifest
+      description: path of the manifest file in the source workspace
+    - name: app-name
+      description: name of the app
+    - name: sha
+      description: sha of the current commit
+  results:
+    - description: The HEAD commit SHA from the target repository
+      name: commit
+  steps:
+    - name: gitops
+      image: quay.io/ibmgaragecloud/ibmcloud-dev:v2.0.4
+      env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: HOME
+          value: /home/devops
+        - name: GIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: username
+        - name: GIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: password
+        - name: GIT_PROTOCOL
+          valueFrom:
+            configMapKeyRef:
+              name: production-repository
+              key: protocol
+              optional: true
+        - name: GIT_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: production-repository
+              key: host
+        - name: GIT_ORG
+          valueFrom:
+            configMapKeyRef:
+              name: production-repository
+              key: org
+        - name: GIT_REPO
+          valueFrom:
+            configMapKeyRef:
+              name: production-repository
+              key: repo
+        - name: GIT_BRANCH
+          valueFrom:
+            configMapKeyRef:
+              name: production-repository
+              key: branch
+              optional: true
+      script: |
+        #!/usr/bin/env bash
+        set -e
+
+        trap 'catch $? $LINENO' EXIT ERR
+
+        catch() {
+          if [ "$1" != "0" ]; then
+            echo "Error $1 occurred on $2"
+          fi
+        }
+
+        if [[ -z "${GIT_USERNAME}" ]]; then
+          echo "Username for GitOps repo not set in secret git-credentials"
+          exit 1
+        fi
+
+        if [[ -z "${GIT_PASSWORD}" ]]; then
+           echo "Password for GitOps repo not set in secret git-credentials"
+           exit 1
+        fi
+
+        if [[ -z "${NAMESPACE}" ]]; then
+           echo "NAMESPACE is not set"
+           exit 1
+        fi
+
+        if [[ -z "$(params.app-name)" ]]; then
+           echo "app-name not set"
+           exit 1
+        fi
+
+        if [[ -z "$(params.sha)" ]]; then
+           echo "sha not set"
+           exit 1
+        fi
+
+        APP_NAME="$(params.app-name)"
+        SHA="$(params.sha)"
+
+        BRANCH_CMD=""
+        if [[ -n "${GIT_BRANCH}" ]]; then
+          BRANCH_CMD="-b ${GIT_BRANCH}"
+        fi
+
+        PROTOCOL="${GIT_PROTOCOL}"
+        if [[ -z "${PROTOCOL}" ]]; then
+          PROTOCOL="https"
+        fi
+
+        git config --global user.email "${APP_NAME}@${NAMESPACE}"
+        git config --global user.name "${NAMESPACE}/${APP_NAME}"
+
+        cd target
+
+        echo "git clone ${BRANCH_CMD} ${PROTOCOL}://${GIT_USERNAME}:<redacted>@${GIT_HOST}/${GIT_ORG}/${GIT_REPO}"
+
+        GIT_URL="${PROTOCOL}://${GIT_USERNAME}:${GIT_PASSWORD}@${GIT_HOST}/${GIT_ORG}/${GIT_REPO}"
+        git clone ${BRANCH_CMD} ${GIT_URL} git-ops
+        cd git-ops
+
+        mkdir -p ${NAMESPACE}/${APP_NAME}/
+        cp ../../source/$(params.manifest) ${NAMESPACE}/${APP_NAME}/
+
+        if [[ $(git status -s | wc -l) -eq 0 ]]; then
+          echo "No changes"
+        else
+          git add "${NAMESPACE}/${APP_NAME}/."
+          git commit -m "update ${NAMESPACE}/${APP_NAME} to commit ${SHA}"
+          git push
+        fi
+
+        RESULT_SHA="$(git rev-parse HEAD)"
+        EXIT_CODE="$?"
+        if [ "$EXIT_CODE" != 0 ] ; then
+          exit $EXIT_CODE
+        fi
+        # ensure we don't add a trailing newline to the result
+        echo -n "$RESULT_SHA" > $(results.commit.path)
+  workspaces:
+    - name: source
+      description: contains the cloned git repo
+    - name: target
+      description: contains the cloned target git repository
