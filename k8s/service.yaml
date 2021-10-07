@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: chatroom-backend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: app-instance
+    app.kubernetes.io/name: app
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 3000
+  sessionAffinity: None
