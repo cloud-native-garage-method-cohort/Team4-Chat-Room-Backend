@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 
-const proto = require('./proto');
+const proto = require('./chatproto/proto');
 const PORT = 3000;
 
 class Chatroom {
@@ -11,7 +11,7 @@ class Chatroom {
         this._clients = new Map(); // Map of client sockets to client name (String)
 
         let app = express();
-        app.get('/', (req, res) => res.send("Chatroom Backend"));
+        app.get('/', (req, res) => res.send("Chatroom Backend")); // Dummy index page on HTTP
 
         let server = http.createServer(app);
         this._server = server;
@@ -19,8 +19,12 @@ class Chatroom {
     }
 
     start() {
-        this._server.listen(this._port, () => console.log(`Server started at port ${this._port}`));
-        this._websock.on('connection', (client) => this._handleConnection(client));
+        this._server.listen(this._port, () => {
+            console.log(`Server started at port ${this._port}`)
+        });
+        this._websock.on('connection', (client) => {
+            this._handleConnection(client);
+        });
     }
 
     _terminate(client, status) {
@@ -29,23 +33,28 @@ class Chatroom {
         client.close();
     }
 
+    _getClientByName(searchName) {
+        for(let [client, name] of this._clients) {
+            if(name == searchName) return client;
+        }
+        return null;
+    }
+
     _connectClient(client, connectReq) {
         if (this._clients.get(client)) {
             console.log(`Client ${connectReq.name} already connected.`);
             return;
         }
-
-        for (let name of this._clients.values()) {
-            if (name === connectReq.name) {
-                console.log(`Client ${client} tried to use an already taken name (${connectReq.name})`);
-                proto.sendMessage(client, new proto.ReplyMessage(proto.Status.NAME_FOUND));
-                return;
-            }
+        
+        if(this._getClientByName(connectReq.name)) {
+            console.log(`Client ${client} tried to use an already taken name (${connectReq.name})`);
+            proto.sendMessage(client, new proto.ReplyMessage(proto.Status.NAME_TAKEN_ERR));
+            return;
         }
 
         this._clients.set(client, connectReq.name);
-        proto.sendMessage(client, new proto.ReplyMessage(proto.Status.OK));
-
+        const message = new proto.ReplyMessage(proto.Status.CONNECT_OK);
+        proto.sendMessage(client, message);
         console.log(`${connectReq.name} connected!`);
     }
 
@@ -62,13 +71,13 @@ class Chatroom {
 
         if (!clientName) {
             console.log(`Client ${client} tried to send a message but isn't logged in!`);
-            this._terminate(client, proto.Status.ERR);
+            this._terminate(client, proto.Status.AUTH_NEEDED);
             return;
         }
 
         if (clientName !== message.name) {
             console.log(`Client ${clientName} tried to send a message as ${message.name}`);
-            this._terminate(client, proto.Status.ERR);
+            this._terminate(client, proto.Status.GENERIC_ERR);
             return;
         }
 
@@ -91,13 +100,13 @@ class Chatroom {
                     default:
                         console.log(`Invalid message type ${message.type} from client`);
                         // Be nice and send an error message
-                        this._terminate(client, proto.Status.ERR);
+                        this._terminate(client, proto.Status.GENERIC_ERR);
                         break;
                 }
             } catch (e) {
                 console.log("Error handling message:");
                 console.log(e);
-                this._terminate(client, proto.Status.ERR);
+                this._terminate(client, proto.Status.GENERIC_ERR);
             }
         });
     }
