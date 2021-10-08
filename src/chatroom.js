@@ -9,7 +9,11 @@ class Chatroom {
     constructor(port) {
         this._port = port;
         this._clients = new Map(); // Map of client sockets to client name (String)
-        let server = http.createServer(express);
+
+        let app = express();
+        app.get('/', (req, res) => res.send("Chatroom Backend"));
+
+        let server = http.createServer(app);
         this._server = server;
         this._websock = new WebSocket.Server({ server });
     }
