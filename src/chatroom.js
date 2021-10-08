@@ -53,14 +53,20 @@ class Chatroom {
         }
 
         this._clients.set(client, connectReq.name);
-        const message = new proto.ReplyMessage(proto.Status.CONNECT_OK);
-        proto.sendMessage(client, message);
+        
+        const ack = new proto.ReplyMessage(proto.Status.CONNECT_OK);
+        proto.sendMessage(client, ack);
         console.log(`${connectReq.name} connected!`);
+
+        const updatedClients = new proto.ClientListMessage(Array.from(this._clients.values()));
+        this._broadcast(updatedClients);
+
     }
 
-    _broadcast(client, message) {
+    _broadcast(message, excluded=null) {
+        console.log(`Broadcasting ${message.type}...`)
         this._clients.forEach((name, receiver, map) => {
-            if (client !== receiver && receiver.readyState == WebSocket.OPEN) {
+            if (receiver !== excluded && receiver.readyState == WebSocket.OPEN) {
                 proto.sendMessage(receiver, message);
             }
         });
@@ -81,8 +87,8 @@ class Chatroom {
             return;
         }
 
-        console.log(`Received message from ${clientName} broadcasting...`);
-        this._broadcast(client, message);
+        console.log(`Received message from ${clientName}`);
+        this._broadcast(message, client);
     }
 
     _handleConnection(client) {
