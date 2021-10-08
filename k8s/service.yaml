@@ -10,6 +10,10 @@ spec:
   ports:
   - name: http
     protocol: TCP
+    port: 8080
+    targetPort: 8080
+  - name: ws
+    protocol: TCP
     port: 3000
     targetPort: 3000
   sessionAffinity: None
