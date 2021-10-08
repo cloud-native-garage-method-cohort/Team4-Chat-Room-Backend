@@ -8,7 +8,7 @@ spec:
       type: string
       description: App name
     - name: source-repo
-      type: string 
+      type: string
       description: Source code repository
     - name: sha
       type: string
@@ -41,9 +41,9 @@ spec:
       params:
         - name: ARGS
           value:
-            - install-ci-test            
+            - install-ci-test
       workspaces:
-        - name: source 
+        - name: source
           workspace: pipeline-shared-data
     - name: create-image
       runAfter:
@@ -53,9 +53,9 @@ spec:
         kind: ClusterTask
       params:
         - name: IMAGE
-          value: "$(params.image-repo):$(tasks.clone-repository.results.commit)"          
+          value: "$(params.image-repo):$(tasks.clone-repository.results.commit)"
       workspaces:
-        - name: source 
+        - name: source
           workspace: pipeline-shared-data
     - name: create-configuration
       runAfter:
@@ -89,20 +89,20 @@ spec:
       workspaces:
         - name: source
           workspace: pipeline-shared-data
-    # - name: save-configuration
-    #   params:
-    #     - name: manifest
-    #       value: "$(tasks.create-configuration.results.manifest)"
-    #     - name: app-name
-    #       value: "$(params.app-name)"
-    #     - name: sha
-    #       value: "$(tasks.clone-repository.results.commit)"
-    #   runAfter:
-    #     - deploy
-    #   taskRef:
-    #     name: save-configuration
-    #   workspaces:
-    #     - name: source
-    #       workspace: pipeline-shared-data
-    #     - name: target
-    #       workspace: production-repository
+    - name: save-configuration
+      params:
+        - name: manifest
+          value: "$(tasks.create-configuration.results.manifest)"
+        - name: app-name
+          value: "$(params.app-name)"
+        - name: sha
+          value: "$(tasks.clone-repository.results.commit)"
+      runAfter:
+        - deploy
+      taskRef:
+        name: save-configuration
+      workspaces:
+        - name: source
+          workspace: pipeline-shared-data
+        - name: target
+          workspace: production-repository
